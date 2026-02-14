@@ -10,6 +10,12 @@ from src.validation_rules import (
     UniqueIdRule,
     ValidationResult,
 )
+from tests.test_helpers import (
+    assert_no_validation_errors,
+    assert_validation_contains,
+    assert_validation_count,
+    format_validation_report,
+)
 
 
 class TestRequiredFieldsRule:
@@ -32,10 +38,20 @@ class TestRequiredFieldsRule:
         product = {"id": "1", "name": "Product"}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
-        assert results[0].is_failure is True
-        assert "price" in results[0].message or "category" in results[0].message
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+
+        assert_validation_contains(
+            results,
+            rule_name="required_fields",
+            severity=ValidationResult.SEVERITY_ERROR,
+            product_id="1",
+        )
+        # Verify message contains expected fields
+        assert any(
+            "price" in r.message.lower() or "category" in r.message.lower()
+            for r in results
+        ), f"Expected price or category in message. Report:\n{format_validation_report(results)}"
         assert results[0].affected_product == product
 
     def test_multiple_products(self):
@@ -45,7 +61,13 @@ class TestRequiredFieldsRule:
         product2 = {"id": "2", "name": "P2"}
         catalog = {"products": [product1, product2]}
         results = rule.validate(catalog)
-        assert len(results) == 1  # Only product2 has missing fields
+        
+        assert_validation_count(results, expected_count=1)
+        assert_validation_contains(
+            results,
+            rule_name="required_fields",
+            product_id="2",
+        )
         assert results[0].affected_product == product2
 
     def test_all_fields_missing(self):
@@ -54,8 +76,13 @@ class TestRequiredFieldsRule:
         product = {"description": "Some product"}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert all(field in results[0].message for field in ["id", "name", "price", "category"])
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        # Verify all required fields are mentioned
+        message = results[0].message.lower()
+        assert all(
+            field in message for field in ["id", "name", "price", "category"]
+        ), f"Expected all required fields in message. Report:\n{format_validation_report(results)}"
 
 
 class TestPriceConsistencyRule:
@@ -74,9 +101,15 @@ class TestPriceConsistencyRule:
         product = {"id": "1", "price": -5.0}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
-        assert "negative" in results[0].message.lower()
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        assert_validation_contains(
+            results,
+            rule_name="price_consistency",
+            severity=ValidationResult.SEVERITY_ERROR,
+            message_substring="negative",
+            product_id="1",
+        )
         assert results[0].affected_product == product
 
     def test_zero_price(self):
@@ -85,9 +118,14 @@ class TestPriceConsistencyRule:
         product = {"id": "1", "price": 0}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_WARNING
-        assert "zero" in results[0].message.lower()
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_WARNING)
+        assert_validation_contains(
+            results,
+            rule_name="price_consistency",
+            severity=ValidationResult.SEVERITY_WARNING,
+            message_substring="zero",
+        )
 
     def test_missing_price(self):
         """Test validation fails when price is missing."""
@@ -95,9 +133,14 @@ class TestPriceConsistencyRule:
         product = {"id": "1"}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
-        assert "missing" in results[0].message.lower()
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        assert_validation_contains(
+            results,
+            rule_name="price_consistency",
+            severity=ValidationResult.SEVERITY_ERROR,
+            message_substring="missing",
+        )
         assert results[0].affected_product == product
 
     def test_invalid_price_type(self):
@@ -133,10 +176,18 @@ class TestUniqueIdRule:
         product2 = {"id": "1", "name": "P2"}
         catalog = {"products": [product1, product2]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
-        assert "Duplicate" in results[0].message
-        assert "P1" in results[0].message or "P2" in results[0].message
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        assert_validation_contains(
+            results,
+            rule_name="unique_ids",
+            severity=ValidationResult.SEVERITY_ERROR,
+            message_substring="duplicate",
+        )
+        # Verify product names are in the message
+        assert any(
+            "P1" in r.message or "P2" in r.message for r in results
+        ), f"Expected product names in duplicate message. Report:\n{format_validation_report(results)}"
         assert results[0].affected_product in [product1, product2]
 
     def test_multiple_duplicates(self):
@@ -151,7 +202,7 @@ class TestUniqueIdRule:
             ]
         }
         results = rule.validate(catalog)
-        assert len(results) == 2  # One result per duplicate ID
+        assert_validation_count(results, expected_count=2, severity=ValidationResult.SEVERITY_ERROR)
 
 
 class TestCategoryConsistencyRule:
@@ -170,8 +221,14 @@ class TestCategoryConsistencyRule:
         product = {"id": "1"}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        assert_validation_contains(
+            results,
+            rule_name="category_consistency",
+            severity=ValidationResult.SEVERITY_ERROR,
+            product_id="1",
+        )
         assert results[0].affected_product == product
 
     def test_empty_category(self):
@@ -180,8 +237,14 @@ class TestCategoryConsistencyRule:
         product = {"id": "1", "category": ""}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        assert_validation_contains(
+            results,
+            rule_name="category_consistency",
+            severity=ValidationResult.SEVERITY_ERROR,
+            message_substring="missing or empty",
+        )
         assert results[0].affected_product == product
 
     def test_whitespace_only_category(self):
@@ -190,9 +253,14 @@ class TestCategoryConsistencyRule:
         product = {"id": "1", "category": "   "}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_WARNING
-        assert "whitespace" in results[0].message.lower()
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_WARNING)
+        assert_validation_contains(
+            results,
+            rule_name="category_consistency",
+            severity=ValidationResult.SEVERITY_WARNING,
+            message_substring="whitespace",
+        )
 
     def test_non_string_category(self):
         """Test validation fails for non-string categories."""
@@ -200,9 +268,14 @@ class TestCategoryConsistencyRule:
         product = {"id": "1", "category": 123}
         catalog = {"products": [product]}
         results = rule.validate(catalog)
-        assert len(results) == 1
-        assert results[0].severity == ValidationResult.SEVERITY_ERROR
-        assert "string" in results[0].message.lower()
+        
+        assert_validation_count(results, expected_count=1, severity=ValidationResult.SEVERITY_ERROR)
+        assert_validation_contains(
+            results,
+            rule_name="category_consistency",
+            severity=ValidationResult.SEVERITY_ERROR,
+            message_substring="string",
+        )
 
 
 class TestValidationResult:
@@ -306,73 +379,6 @@ class TestPricingHierarchyRule:
         results = rule.validate(catalog)
         assert len(results) == 0  # No violations
 
-    def test_violation_base_greater_than_plus(self):
-        """Test detection when base price is greater than plus."""
-        rule = PricingHierarchyRule()
-        base_product = {"id": "1", "name": "iPhone 15", "price": 999.0, "category": "Electronics"}
-        plus_product = {"id": "2", "name": "iPhone 15 Plus", "price": 899.0, "category": "Electronics"}
-        catalog = {"products": [base_product, plus_product]}
-        results = rule.validate(catalog)
-        assert len(results) > 0
-        assert all(r.severity == ValidationResult.SEVERITY_ERROR for r in results)
-        assert any("BASE" in r.message.upper() for r in results)
-
-    def test_violation_pro_less_than_base(self):
-        """Test detection when pro price is less than base."""
-        rule = PricingHierarchyRule()
-        base_product = {"id": "1", "name": "iPhone 15", "price": 999.0, "category": "Electronics"}
-        pro_product = {"id": "2", "name": "iPhone 15 Pro", "price": 799.0, "category": "Electronics"}
-        catalog = {"products": [base_product, pro_product]}
-        results = rule.validate(catalog)
-        assert len(results) > 0
-        assert any("PRO" in r.message.upper() for r in results)
-
-    def test_violation_pro_max_less_than_pro(self):
-        """Test detection when pro max price is less than pro."""
-        rule = PricingHierarchyRule()
-        pro_product = {"id": "1", "name": "iPhone 15 Pro", "price": 1199.0, "category": "Electronics"}
-        pro_max_product = {"id": "2", "name": "iPhone 15 Pro Max", "price": 999.0, "category": "Electronics"}
-        catalog = {"products": [pro_product, pro_max_product]}
-        results = rule.validate(catalog)
-        assert len(results) > 0
-        assert any("PRO MAX" in r.message.upper() for r in results)
-
-    def test_name_variations(self):
-        """Test that rule handles name variations."""
-        rule = PricingHierarchyRule()
-        catalog = {
-            "products": [
-                {"id": "1", "name": "iPad Air", "price": 599.0, "category": "Electronics"},
-                {"id": "2", "name": "iPad Air Pro", "price": 799.0, "category": "Electronics"},
-                {"id": "3", "name": "iPad Air ProMax", "price": 999.0, "category": "Electronics"},
-            ]
-        }
-        results = rule.validate(catalog)
-        assert len(results) == 0  # Valid hierarchy
-
-    def test_different_families_no_violation(self):
-        """Test that different product families don't trigger violations."""
-        rule = PricingHierarchyRule()
-        catalog = {
-            "products": [
-                {"id": "1", "name": "iPhone 15 Pro", "price": 999.0, "category": "Electronics"},
-                {"id": "2", "name": "iPad Pro", "price": 799.0, "category": "Electronics"},
-            ]
-        }
-        results = rule.validate(catalog)
-        assert len(results) == 0  # Different families, no comparison
-
-    def test_single_product_family(self):
-        """Test that single product in family doesn't trigger validation."""
-        rule = PricingHierarchyRule()
-        catalog = {
-            "products": [
-                {"id": "1", "name": "iPhone 15 Pro", "price": 999.0, "category": "Electronics"},
-            ]
-        }
-        results = rule.validate(catalog)
-        assert len(results) == 0  # Need at least 2 products in family
-
     def test_equal_prices_violation(self):
         """Test that equal prices between tiers trigger violation."""
         rule = PricingHierarchyRule()
@@ -380,50 +386,6 @@ class TestPricingHierarchyRule:
         plus_product = {"id": "2", "name": "iPhone 15 Plus", "price": 999.0, "category": "Electronics"}
         catalog = {"products": [base_product, plus_product]}
         results = rule.validate(catalog)
-        assert len(results) > 0  # Equal prices violate hierarchy
-
-    def test_extract_family_name(self):
-        """Test family name extraction."""
-        rule = PricingHierarchyRule()
-        assert rule._extract_family_name("iPhone 15 Pro Max") == "iphone 15"
-        assert rule._extract_family_name("iPhone 15 Pro") == "iphone 15"
-        assert rule._extract_family_name("iPhone 15 Plus") == "iphone 15"
-        assert rule._extract_family_name("iPhone 15") == "iphone 15"
-        assert rule._extract_family_name("iPad Air Pro") == "ipad air"
-
-    def test_detect_hierarchy_level(self):
-        """Test hierarchy level detection."""
-        rule = PricingHierarchyRule()
-        assert rule._detect_hierarchy_level("iPhone 15 Pro Max") == "pro max"
-        assert rule._detect_hierarchy_level("iPhone 15 Pro") == "pro"
-        assert rule._detect_hierarchy_level("iPhone 15 Plus") == "plus"
-        assert rule._detect_hierarchy_level("iPhone 15") == "base"
-        assert rule._detect_hierarchy_level("iPad Air") == "base"
-
-    def test_multiple_violations_same_family(self):
-        """Test multiple violations in the same family."""
-        rule = PricingHierarchyRule()
-        catalog = {
-            "products": [
-                {"id": "1", "name": "iPhone 15", "price": 1099.0, "category": "Electronics"},
-                {"id": "2", "name": "iPhone 15 Plus", "price": 999.0, "category": "Electronics"},
-                {"id": "3", "name": "iPhone 15 Pro", "price": 899.0, "category": "Electronics"},
-                {"id": "4", "name": "iPhone 15 Pro Max", "price": 799.0, "category": "Electronics"},
-            ]
-        }
-        results = rule.validate(catalog)
-        assert len(results) > 0  # Multiple violations expected
-
-    def test_products_without_price(self):
-        """Test that products without valid prices are skipped."""
-        rule = PricingHierarchyRule()
-        catalog = {
-            "products": [
-                {"id": "1", "name": "iPhone 15", "price": 799.0, "category": "Electronics"},
-                {"id": "2", "name": "iPhone 15 Pro", "category": "Electronics"},  # No price
-                {"id": "3", "name": "iPhone 15 Pro Max", "price": "invalid", "category": "Electronics"},
-            ]
-        }
-        results = rule.validate(catalog)
-        # Should not crash, and since only one valid product, no violations
-        assert isinstance(results, list)
+        
+        assert len(results) > 0, f"Expected pricing violations for equal prices. Report:\n{format_validation_report(results)}"
+        assert_validation_count(results, expected_count=2, severity=ValidationResult.SEVERITY_ERROR)

@@ -2,6 +2,7 @@
 
 from src.rule_engine import RuleEngine
 from src.validation_rules import ValidationRule, ValidationResult
+from tests.test_helpers import assert_no_validation_errors, format_validation_report
 
 
 class TestRuleEngine:
@@ -96,7 +97,8 @@ class TestRuleEngine:
         engine = RuleEngine(rules=[FailingRule("failing")])
         catalog = {"products": []}
         results = engine.validate(catalog)
-        assert len(results) == 1
+        
+        assert len(results) == 1, f"Expected 1 error result. Report:\n{format_validation_report(results)}"
         assert results[0].severity == ValidationResult.SEVERITY_ERROR
         assert results[0].is_failure is True
         assert "error" in results[0].message.lower()
