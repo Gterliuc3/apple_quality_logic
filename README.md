@@ -1,76 +1,38 @@
-# Product Catalog Validation Tool
+# Apple Quality Logic - Automated Testing Project
 
-Internal quality validation tool for validating product catalog consistency.
+A Python-based automation project that demonstrates my ability to design, implement, and maintain robust quality assurance tests for product catalogs.
 
-## Overview
+## Key Highlights
 
-This tool validates product catalog data for consistency, completeness, and correctness. It provides a modular architecture with clear separation of concerns:
+- Implemented automated **validation rules** for product catalogs:
+  - Required fields (`id`, `name`, `price`, `category`)
+  - Price consistency and hierarchy (BASE, PLUS, PRO, PRO MAX)
+  - Unique product IDs and category checks
+- Developed **scalable test cases** using **pytest**, ensuring coverage for multiple product scenarios
+- Built **custom validation reporting** to clearly show errors and warnings
+- Focused on **clean, maintainable, and professional QA practices**
 
-- **Catalog Loader**: Loads and parses JSON catalog files
-- **Validation Rules**: Defines validation logic for catalog consistency
-- **Rule Engine**: Executes validation rules and aggregates results
+## Tech & Tools
 
-## Project Structure
+- Python 3.9+
+- pytest
+- Git / GitHub
+- Virtual environments for dependency management
 
-```
-apple_quality_logic/
-├── src/
-│   ├── catalog_loader.py    # Catalog loading and parsing
-│   ├── validation_rules.py  # Validation rule definitions
-│   └── rule_engine.py       # Rule execution engine
-├── tests/                   # Test suite
-├── data/
-│   └── sample_catalog.json  # Sample catalog data
-└── requirements.txt         # Python dependencies
-```
+## How to Run
 
-## Installation
+1. Clone the repository:
 
 ```bash
+git clone https://github.com/Gterliuc3/apple_quality_logic.git
+cd apple_quality_logic
+Set up the virtual environment and install dependencies:
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-```
+Run all tests:
+pytest -v
+All tests pass, demonstrating correctness and coverage of validation rules.
 
-## Usage
-
-```python
-from pathlib import Path
-from src.catalog_loader import CatalogLoader
-from src.rule_engine import RuleEngine
-
-# Load catalog
-loader = CatalogLoader(Path("data/sample_catalog.json"))
-catalog = loader.load()
-
-# Validate
-engine = RuleEngine()
-results = engine.validate_with_summary(catalog)
-
-# Check results
-print(f"Passed: {results['summary']['passed']}")
-print(f"Failed: {results['summary']['failed']}")
-```
-
-## Validation Rules
-
-The tool includes the following validation rules:
-
-- **Required Fields**: Ensures all products have required fields (id, name, price, category)
-- **Price Consistency**: Validates price format and ensures non-negative values
-- **Unique IDs**: Ensures all product IDs are unique
-- **Category Consistency**: Validates category field format and presence
-
-## Testing
-
-Run the test suite:
-
-```bash
-pytest tests/
-```
-
-## Development
-
-The codebase follows production-style practices:
-- Type hints for better code clarity
-- Comprehensive error handling
-- Logging for debugging and monitoring
-- Modular design for extensibility
+Author: Gali Einy
+GitHub: Gterliuc3
