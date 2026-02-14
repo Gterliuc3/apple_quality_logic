@@ -5,6 +5,7 @@ import pytest
 from src.validation_rules import (
     CategoryConsistencyRule,
     PriceConsistencyRule,
+    PricingHierarchyRule,
     RequiredFieldsRule,
     UniqueIdRule,
     ValidationResult,
@@ -286,3 +287,143 @@ class TestValidationResult:
         """Test product_id property when no product."""
         result = ValidationResult("rule", ValidationResult.SEVERITY_ERROR, "msg")
         assert result.product_id is None
+
+
+class TestPricingHierarchyRule:
+    """Test cases for PricingHierarchyRule."""
+
+    def test_valid_hierarchy(self):
+        """Test validation passes when hierarchy is correct."""
+        rule = PricingHierarchyRule()
+        catalog = {
+            "products": [
+                {"id": "1", "name": "iPhone 15", "price": 799.0, "category": "Electronics"},
+                {"id": "2", "name": "iPhone 15 Plus", "price": 899.0, "category": "Electronics"},
+                {"id": "3", "name": "iPhone 15 Pro", "price": 999.0, "category": "Electronics"},
+                {"id": "4", "name": "iPhone 15 Pro Max", "price": 1099.0, "category": "Electronics"},
+            ]
+        }
+        results = rule.validate(catalog)
+        assert len(results) == 0  # No violations
+
+    def test_violation_base_greater_than_plus(self):
+        """Test detection when base price is greater than plus."""
+        rule = PricingHierarchyRule()
+        base_product = {"id": "1", "name": "iPhone 15", "price": 999.0, "category": "Electronics"}
+        plus_product = {"id": "2", "name": "iPhone 15 Plus", "price": 899.0, "category": "Electronics"}
+        catalog = {"products": [base_product, plus_product]}
+        results = rule.validate(catalog)
+        assert len(results) > 0
+        assert all(r.severity == ValidationResult.SEVERITY_ERROR for r in results)
+        assert any("BASE" in r.message.upper() for r in results)
+
+    def test_violation_pro_less_than_base(self):
+        """Test detection when pro price is less than base."""
+        rule = PricingHierarchyRule()
+        base_product = {"id": "1", "name": "iPhone 15", "price": 999.0, "category": "Electronics"}
+        pro_product = {"id": "2", "name": "iPhone 15 Pro", "price": 799.0, "category": "Electronics"}
+        catalog = {"products": [base_product, pro_product]}
+        results = rule.validate(catalog)
+        assert len(results) > 0
+        assert any("PRO" in r.message.upper() for r in results)
+
+    def test_violation_pro_max_less_than_pro(self):
+        """Test detection when pro max price is less than pro."""
+        rule = PricingHierarchyRule()
+        pro_product = {"id": "1", "name": "iPhone 15 Pro", "price": 1199.0, "category": "Electronics"}
+        pro_max_product = {"id": "2", "name": "iPhone 15 Pro Max", "price": 999.0, "category": "Electronics"}
+        catalog = {"products": [pro_product, pro_max_product]}
+        results = rule.validate(catalog)
+        assert len(results) > 0
+        assert any("PRO MAX" in r.message.upper() for r in results)
+
+    def test_name_variations(self):
+        """Test that rule handles name variations."""
+        rule = PricingHierarchyRule()
+        catalog = {
+            "products": [
+                {"id": "1", "name": "iPad Air", "price": 599.0, "category": "Electronics"},
+                {"id": "2", "name": "iPad Air Pro", "price": 799.0, "category": "Electronics"},
+                {"id": "3", "name": "iPad Air ProMax", "price": 999.0, "category": "Electronics"},
+            ]
+        }
+        results = rule.validate(catalog)
+        assert len(results) == 0  # Valid hierarchy
+
+    def test_different_families_no_violation(self):
+        """Test that different product families don't trigger violations."""
+        rule = PricingHierarchyRule()
+        catalog = {
+            "products": [
+                {"id": "1", "name": "iPhone 15 Pro", "price": 999.0, "category": "Electronics"},
+                {"id": "2", "name": "iPad Pro", "price": 799.0, "category": "Electronics"},
+            ]
+        }
+        results = rule.validate(catalog)
+        assert len(results) == 0  # Different families, no comparison
+
+    def test_single_product_family(self):
+        """Test that single product in family doesn't trigger validation."""
+        rule = PricingHierarchyRule()
+        catalog = {
+            "products": [
+                {"id": "1", "name": "iPhone 15 Pro", "price": 999.0, "category": "Electronics"},
+            ]
+        }
+        results = rule.validate(catalog)
+        assert len(results) == 0  # Need at least 2 products in family
+
+    def test_equal_prices_violation(self):
+        """Test that equal prices between tiers trigger violation."""
+        rule = PricingHierarchyRule()
+        base_product = {"id": "1", "name": "iPhone 15", "price": 999.0, "category": "Electronics"}
+        plus_product = {"id": "2", "name": "iPhone 15 Plus", "price": 999.0, "category": "Electronics"}
+        catalog = {"products": [base_product, plus_product]}
+        results = rule.validate(catalog)
+        assert len(results) > 0  # Equal prices violate hierarchy
+
+    def test_extract_family_name(self):
+        """Test family name extraction."""
+        rule = PricingHierarchyRule()
+        assert rule._extract_family_name("iPhone 15 Pro Max") == "iphone 15"
+        assert rule._extract_family_name("iPhone 15 Pro") == "iphone 15"
+        assert rule._extract_family_name("iPhone 15 Plus") == "iphone 15"
+        assert rule._extract_family_name("iPhone 15") == "iphone 15"
+        assert rule._extract_family_name("iPad Air Pro") == "ipad air"
+
+    def test_detect_hierarchy_level(self):
+        """Test hierarchy level detection."""
+        rule = PricingHierarchyRule()
+        assert rule._detect_hierarchy_level("iPhone 15 Pro Max") == "pro max"
+        assert rule._detect_hierarchy_level("iPhone 15 Pro") == "pro"
+        assert rule._detect_hierarchy_level("iPhone 15 Plus") == "plus"
+        assert rule._detect_hierarchy_level("iPhone 15") == "base"
+        assert rule._detect_hierarchy_level("iPad Air") == "base"
+
+    def test_multiple_violations_same_family(self):
+        """Test multiple violations in the same family."""
+        rule = PricingHierarchyRule()
+        catalog = {
+            "products": [
+                {"id": "1", "name": "iPhone 15", "price": 1099.0, "category": "Electronics"},
+                {"id": "2", "name": "iPhone 15 Plus", "price": 999.0, "category": "Electronics"},
+                {"id": "3", "name": "iPhone 15 Pro", "price": 899.0, "category": "Electronics"},
+                {"id": "4", "name": "iPhone 15 Pro Max", "price": 799.0, "category": "Electronics"},
+            ]
+        }
+        results = rule.validate(catalog)
+        assert len(results) > 0  # Multiple violations expected
+
+    def test_products_without_price(self):
+        """Test that products without valid prices are skipped."""
+        rule = PricingHierarchyRule()
+        catalog = {
+            "products": [
+                {"id": "1", "name": "iPhone 15", "price": 799.0, "category": "Electronics"},
+                {"id": "2", "name": "iPhone 15 Pro", "category": "Electronics"},  # No price
+                {"id": "3", "name": "iPhone 15 Pro Max", "price": "invalid", "category": "Electronics"},
+            ]
+        }
+        results = rule.validate(catalog)
+        # Should not crash, and since only one valid product, no violations
+        assert isinstance(results, list)

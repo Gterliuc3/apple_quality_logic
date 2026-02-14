@@ -4,34 +4,62 @@
   "products": [
     {
       "id": "PROD-001",
+      "name": "iPhone 15",
+      "price": 799.00,
+      "category": "Electronics",
+      "description": "Base model smartphone"
+    },
+    {
+      "id": "PROD-002",
+      "name": "iPhone 15 Plus",
+      "price": 899.00,
+      "category": "Electronics",
+      "description": "Larger screen variant"
+    },
+    {
+      "id": "PROD-003",
+      "name": "iPhone 15 Pro",
+      "price": 999.00,
+      "category": "Electronics",
+      "description": "Professional features model"
+    },
+    {
+      "id": "PROD-004",
+      "name": "iPhone 15 Pro Max",
+      "price": 1099.00,
+      "category": "Electronics",
+      "description": "Premium large screen model"
+    },
+    {
+      "id": "PROD-005",
       "name": "Wireless Headphones",
       "price": 79.99,
       "category": "Electronics",
       "description": "Premium wireless headphones with noise cancellation"
     },
     {
-      "id": "PROD-002",
+      "id": "PROD-006",
       "name": "Smart Watch",
       "price": 299.99,
       "category": "Electronics",
       "description": "Fitness tracking smart watch"
     },
     {
-      "id": "PROD-003",
+      "id": "PROD-007",
       "name": "Coffee Maker",
       "price": 89.50,
       "category": "Appliances",
       "description": "Programmable coffee maker"
     },
     {
-      "id": "PROD-004",
+      "id": "PROD-008",
       "name": "Desk Lamp",
       "price": 45.00,
       "category": "Furniture",
       "description": "LED desk lamp with adjustable brightness"
     },
     {
-      "id": "PROD-005",
+      "id": "PROD-009",
       "name": "Laptop Stand",
       "price": 34.99,
       "category": "Furniture",
