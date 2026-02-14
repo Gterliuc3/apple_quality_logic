@@ -7,33 +7,65 @@ logger = logging.getLogger(__name__)
 
 
 class ValidationResult:
-    """Result of a single validation rule check."""
+    """Structured failure report for a validation rule check."""
+
+    SEVERITY_ERROR = "error"
+    SEVERITY_WARNING = "warning"
+    SEVERITY_INFO = "info"
 
     def __init__(
         self,
         rule_name: str,
-        passed: bool,
+        severity: str,
         message: str,
-        product_id: Optional[str] = None,
+        affected_product: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize validation result.
 
         Args:
             rule_name: Name of the validation rule
-            passed: Whether the validation passed
+            severity: Severity level (error, warning, info)
             message: Descriptive message about the result
-            product_id: Optional product identifier if rule applies to specific product
+            affected_product: Optional product dictionary if rule applies to specific product
         """
+        if severity not in [self.SEVERITY_ERROR, self.SEVERITY_WARNING, self.SEVERITY_INFO]:
+            raise ValueError(f"Invalid severity: {severity}")
+
         self.rule_name = rule_name
-        self.passed = passed
+        self.severity = severity
         self.message = message
-        self.product_id = product_id
+        self.affected_product = affected_product
+
+    @property
+    def is_failure(self) -> bool:
+        """Check if this result represents a failure (error or warning)."""
+        return self.severity in [self.SEVERITY_ERROR, self.SEVERITY_WARNING]
+
+    @property
+    def product_id(self) -> Optional[str]:
+        """Extract product ID from affected_product if available."""
+        if self.affected_product:
+            return str(self.affected_product.get("id", "unknown"))
+        return None
 
     def __repr__(self) -> str:
-        status = "PASS" if self.passed else "FAIL"
-        product_info = f" [{self.product_id}]" if self.product_id else ""
-        return f"{status}: {self.rule_name}{product_info} - {self.message}"
+        product_info = f" [Product: {self.product_id}]" if self.product_id else ""
+        return f"[{self.severity.upper()}] {self.rule_name}{product_info}: {self.message}"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert result to dictionary for structured reporting."""
+        result = {
+            "rule_name": self.rule_name,
+            "severity": self.severity,
+            "message": self.message,
+        }
+        if self.affected_product:
+            result["affected_product"] = {
+                "id": self.affected_product.get("id"),
+                "name": self.affected_product.get("name"),
+            }
+        return result
 
 
 class ValidationRule:
@@ -75,7 +107,6 @@ class RequiredFieldsRule(ValidationRule):
         products = catalog.get("products", [])
 
         for product in products:
-            product_id = product.get("id", "unknown")
             missing_fields = [
                 field for field in self.REQUIRED_FIELDS if field not in product
             ]
@@ -84,18 +115,9 @@ class RequiredFieldsRule(ValidationRule):
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=False,
+                        severity=ValidationResult.SEVERITY_ERROR,
                         message=f"Missing required fields: {', '.join(missing_fields)}",
-                        product_id=str(product_id),
-                    )
-                )
-            else:
-                results.append(
-                    ValidationResult(
-                        rule_name=self.name,
-                        passed=True,
-                        message="All required fields present",
-                        product_id=str(product_id),
+                        affected_product=product,
                     )
                 )
 
@@ -114,16 +136,15 @@ class PriceConsistencyRule(ValidationRule):
         products = catalog.get("products", [])
 
         for product in products:
-            product_id = product.get("id", "unknown")
             price = product.get("price")
 
             if price is None:
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=False,
+                        severity=ValidationResult.SEVERITY_ERROR,
                         message="Price is missing",
-                        product_id=str(product_id),
+                        affected_product=product,
                     )
                 )
                 continue
@@ -134,27 +155,27 @@ class PriceConsistencyRule(ValidationRule):
                     results.append(
                         ValidationResult(
                             rule_name=self.name,
-                            passed=False,
+                            severity=ValidationResult.SEVERITY_ERROR,
                             message=f"Price is negative: {price_float}",
-                            product_id=str(product_id),
+                            affected_product=product,
                         )
                     )
-                else:
+                elif price_float == 0:
                     results.append(
                         ValidationResult(
                             rule_name=self.name,
-                            passed=True,
-                            message=f"Price is valid: {price_float}",
-                            product_id=str(product_id),
+                            severity=ValidationResult.SEVERITY_WARNING,
+                            message="Price is zero - verify if this is intentional",
+                            affected_product=product,
                         )
                     )
             except (ValueError, TypeError):
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=False,
-                        message=f"Price is not a valid number: {price}",
-                        product_id=str(product_id),
+                        severity=ValidationResult.SEVERITY_ERROR,
+                        message=f"Price is not a valid number: {price} (type: {type(price).__name__})",
+                        affected_product=product,
                     )
                 )
 
@@ -171,39 +192,32 @@ class UniqueIdRule(ValidationRule):
         """Check that all product IDs are unique."""
         results = []
         products = catalog.get("products", [])
-        seen_ids: Dict[str, List[int]] = {}
+        seen_ids: Dict[str, List[Dict[str, Any]]] = {}
 
-        for idx, product in enumerate(products):
+        for product in products:
             product_id = product.get("id")
             if product_id is None:
                 continue
 
             product_id_str = str(product_id)
             if product_id_str in seen_ids:
-                seen_ids[product_id_str].append(idx)
+                seen_ids[product_id_str].append(product)
             else:
-                seen_ids[product_id_str] = [idx]
+                seen_ids[product_id_str] = [product]
 
-        duplicates = {id: indices for id, indices in seen_ids.items() if len(indices) > 1}
+        duplicates = {id: products_list for id, products_list in seen_ids.items() if len(products_list) > 1}
 
         if duplicates:
-            for product_id, indices in duplicates.items():
+            for product_id, duplicate_products in duplicates.items():
+                product_names = [p.get("name", "unnamed") for p in duplicate_products]
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=False,
-                        message=f"Duplicate ID found at indices: {indices}",
-                        product_id=product_id,
+                        severity=ValidationResult.SEVERITY_ERROR,
+                        message=f"Duplicate ID '{product_id}' found in {len(duplicate_products)} products: {', '.join(product_names)}",
+                        affected_product=duplicate_products[0],  # Report first occurrence
                     )
                 )
-        else:
-            results.append(
-                ValidationResult(
-                    rule_name=self.name,
-                    passed=True,
-                    message="All product IDs are unique",
-                )
-            )
 
         return results
 
@@ -220,34 +234,33 @@ class CategoryConsistencyRule(ValidationRule):
         products = catalog.get("products", [])
 
         for product in products:
-            product_id = product.get("id", "unknown")
             category = product.get("category")
 
             if not category:
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=False,
+                        severity=ValidationResult.SEVERITY_ERROR,
                         message="Category is missing or empty",
-                        product_id=str(product_id),
+                        affected_product=product,
                     )
                 )
             elif not isinstance(category, str):
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=False,
-                        message=f"Category must be a string, got {type(category).__name__}",
-                        product_id=str(product_id),
+                        severity=ValidationResult.SEVERITY_ERROR,
+                        message=f"Category must be a string, got {type(category).__name__}: {category}",
+                        affected_product=product,
                     )
                 )
-            else:
+            elif len(category.strip()) == 0:
                 results.append(
                     ValidationResult(
                         rule_name=self.name,
-                        passed=True,
-                        message=f"Category is valid: {category}",
-                        product_id=str(product_id),
+                        severity=ValidationResult.SEVERITY_WARNING,
+                        message="Category is whitespace-only",
+                        affected_product=product,
                     )
                 )
 

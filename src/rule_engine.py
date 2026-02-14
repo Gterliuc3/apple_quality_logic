@@ -5,6 +5,9 @@ from typing import Any, Dict, List, Optional
 
 from .validation_rules import ValidationResult, ValidationRule
 
+# Re-export for convenience
+__all__ = ["RuleEngine", "ValidationResult"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +48,7 @@ class RuleEngine:
                 all_results.append(
                     ValidationResult(
                         rule_name=rule.name,
-                        passed=False,
+                        severity=ValidationResult.SEVERITY_ERROR,
                         message=f"Rule execution error: {str(e)}",
                     )
                 )
@@ -66,24 +69,29 @@ class RuleEngine:
         """
         results = self.validate(catalog)
 
-        passed_count = sum(1 for r in results if r.passed)
-        failed_count = len(results) - passed_count
+        error_count = sum(1 for r in results if r.severity == ValidationResult.SEVERITY_ERROR)
+        warning_count = sum(1 for r in results if r.severity == ValidationResult.SEVERITY_WARNING)
+        info_count = sum(1 for r in results if r.severity == ValidationResult.SEVERITY_INFO)
+        failure_count = error_count + warning_count
 
         rule_summary: Dict[str, Dict[str, int]] = {}
         for result in results:
             if result.rule_name not in rule_summary:
-                rule_summary[result.rule_name] = {"passed": 0, "failed": 0}
-            if result.passed:
-                rule_summary[result.rule_name]["passed"] += 1
-            else:
-                rule_summary[result.rule_name]["failed"] += 1
+                rule_summary[result.rule_name] = {
+                    "error": 0,
+                    "warning": 0,
+                    "info": 0,
+                }
+            rule_summary[result.rule_name][result.severity] += 1
 
         return {
             "results": results,
             "summary": {
-                "total_checks": len(results),
-                "passed": passed_count,
-                "failed": failed_count,
+                "total_issues": len(results),
+                "errors": error_count,
+                "warnings": warning_count,
+                "info": info_count,
+                "failures": failure_count,
                 "rules": rule_summary,
             },
         }
